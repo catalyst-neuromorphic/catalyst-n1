@@ -1,0 +1,65 @@
+# Compiled Verilog
+*.vvp
+*.out
+
+# Waveform dumps
+*.vcd
+
+# Simulation directories and binaries
+sim/
+sim_async
+sim_stress
+
+# Synthesis outputs
+synth/
+
+# Windows artifacts
+nul
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Datasets (large, download separately)
+sdk/benchmarks/data/
+sdk/data/
+
+# Model checkpoints
+*.pt
+
+# Build archives
+upload.zip
+
+# Generated images (keep architecture.png)
+spike_visualization.png
+sdk/neurocore_dashboard.png
+sdk/async_dashboard.png
+sdk/p13_dashboard.png
+sdk/raster_demo.png
+sdk/results/
+
+# FPGA build artifacts
+fpga/f2/*.tar
+
+# Editor/IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# Vivado
+*.jou
+*.log
+*.str
+.Xil/
+
+# LaTeX build artifacts
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.synctex.gz
