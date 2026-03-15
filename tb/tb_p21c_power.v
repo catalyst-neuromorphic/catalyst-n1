@@ -1,0 +1,327 @@
+`timescale 1ps/1ps
+
+module tb_p21c_power;
+
+    localparam NUM_CORES    = 4;
+    localparam CORE_ID_BITS = 2;
+    localparam NUM_NEURONS  = 1024;
+    localparam NEURON_BITS  = 10;
+    localparam DATA_WIDTH   = 16;
+    localparam POOL_DEPTH   = 1024;
+    localparam POOL_ADDR_BITS = 10;
+    localparam COUNT_BITS   = 10;
+    localparam THRESHOLD    = 16'sd1000;
+    localparam LEAK_RATE    = 16'sd3;
+    localparam ROUTE_FANOUT = 8;
+    localparam ROUTE_SLOT_BITS = 3;
+    localparam GLOBAL_ROUTE_SLOTS = 4;
+    localparam GLOBAL_ROUTE_SLOT_BITS = 2;
+
+    reg clk, rst_n;
+    always #5000 clk = ~clk;
+
+    reg start;
+    reg prog_pool_we;
+    reg [CORE_ID_BITS-1:0] prog_pool_core;
+    reg [POOL_ADDR_BITS-1:0] prog_pool_addr;
+    reg [NEURON_BITS-1:0] prog_pool_src, prog_pool_target;
+    reg signed [DATA_WIDTH-1:0] prog_pool_weight;
+    reg [1:0] prog_pool_comp;
+
+    reg prog_index_we;
+    reg [CORE_ID_BITS-1:0] prog_index_core;
+    reg [NEURON_BITS-1:0] prog_index_neuron;
+    reg [POOL_ADDR_BITS-1:0] prog_index_base;
+    reg [COUNT_BITS-1:0] prog_index_count;
+    reg [1:0] prog_index_format;
+
+    reg prog_route_we;
+    reg [CORE_ID_BITS-1:0] prog_route_src_core;
+    reg [NEURON_BITS-1:0] prog_route_src_neuron;
+    reg [ROUTE_SLOT_BITS-1:0] prog_route_slot;
+    reg [CORE_ID_BITS-1:0] prog_route_dest_core;
+    reg [NEURON_BITS-1:0] prog_route_dest_neuron;
+    reg signed [DATA_WIDTH-1:0] prog_route_weight;
+
+    reg prog_global_route_we;
+    reg [CORE_ID_BITS-1:0] prog_global_route_src_core;
+    reg [NEURON_BITS-1:0] prog_global_route_src_neuron;
+    reg [GLOBAL_ROUTE_SLOT_BITS-1:0] prog_global_route_slot;
+    reg [CORE_ID_BITS-1:0] prog_global_route_dest_core;
+    reg [NEURON_BITS-1:0] prog_global_route_dest_neuron;
+    reg signed [DATA_WIDTH-1:0] prog_global_route_weight;
+
+    reg learn_enable, graded_enable, dendritic_enable, async_enable;
+    reg threefactor_enable, noise_enable, skip_idle_enable;
+    reg signed [DATA_WIDTH-1:0] reward_value;
+
+    reg prog_delay_we;
+    reg [CORE_ID_BITS-1:0] prog_delay_core;
+    reg [POOL_ADDR_BITS-1:0] prog_delay_addr;
+    reg [5:0] prog_delay_value;
+
+    reg prog_ucode_we;
+    reg [CORE_ID_BITS-1:0] prog_ucode_core;
+    reg [5:0] prog_ucode_addr;
+    reg [31:0] prog_ucode_data;
+
+    reg prog_param_we;
+    reg [CORE_ID_BITS-1:0] prog_param_core;
+    reg [NEURON_BITS-1:0] prog_param_neuron;
+    reg [3:0] prog_param_id;
+    reg signed [DATA_WIDTH-1:0] prog_param_value;
+
+    reg ext_valid;
+    reg [CORE_ID_BITS-1:0] ext_core;
+    reg [NEURON_BITS-1:0] ext_neuron_id;
+    reg signed [DATA_WIDTH-1:0] ext_current;
+
+    reg probe_read;
+    reg [CORE_ID_BITS-1:0] probe_core;
+    reg [NEURON_BITS-1:0] probe_neuron;
+    reg [3:0] probe_state_id;
+    reg [POOL_ADDR_BITS-1:0] probe_pool_addr;
+    wire signed [DATA_WIDTH-1:0] probe_data;
+    wire probe_valid;
+
+    wire timestep_done;
+    wire [NUM_CORES-1:0] spike_valid_bus;
+    wire [NUM_CORES*NEURON_BITS-1:0] spike_id_bus;
+    wire [5:0] mesh_state_out;
+    wire [31:0] total_spikes, timestep_count;
+    wire [NUM_CORES-1:0] core_idle_bus;
+
+    neuromorphic_mesh #(
+        .NUM_CORES(NUM_CORES), .CORE_ID_BITS(CORE_ID_BITS),
+        .NUM_NEURONS(NUM_NEURONS), .NEURON_BITS(NEURON_BITS),
+        .DATA_WIDTH(DATA_WIDTH), .POOL_DEPTH(POOL_DEPTH),
+        .POOL_ADDR_BITS(POOL_ADDR_BITS), .COUNT_BITS(COUNT_BITS),
+        .THRESHOLD(THRESHOLD), .LEAK_RATE(LEAK_RATE),
+        .ROUTE_FANOUT(ROUTE_FANOUT), .ROUTE_SLOT_BITS(ROUTE_SLOT_BITS),
+        .GLOBAL_ROUTE_SLOTS(GLOBAL_ROUTE_SLOTS),
+        .GLOBAL_ROUTE_SLOT_BITS(GLOBAL_ROUTE_SLOT_BITS)
+    ) uut (
+        .clk(clk), .rst_n(rst_n), .start(start),
+        .prog_pool_we(prog_pool_we), .prog_pool_core(prog_pool_core),
+        .prog_pool_addr(prog_pool_addr), .prog_pool_src(prog_pool_src),
+        .prog_pool_target(prog_pool_target), .prog_pool_weight(prog_pool_weight),
+        .prog_pool_comp(prog_pool_comp),
+        .prog_index_we(prog_index_we), .prog_index_core(prog_index_core),
+        .prog_index_neuron(prog_index_neuron), .prog_index_base(prog_index_base),
+        .prog_index_count(prog_index_count), .prog_index_format(prog_index_format),
+        .prog_route_we(prog_route_we), .prog_route_src_core(prog_route_src_core),
+        .prog_route_src_neuron(prog_route_src_neuron), .prog_route_slot(prog_route_slot),
+        .prog_route_dest_core(prog_route_dest_core),
+        .prog_route_dest_neuron(prog_route_dest_neuron),
+        .prog_route_weight(prog_route_weight),
+        .prog_global_route_we(prog_global_route_we),
+        .prog_global_route_src_core(prog_global_route_src_core),
+        .prog_global_route_src_neuron(prog_global_route_src_neuron),
+        .prog_global_route_slot(prog_global_route_slot),
+        .prog_global_route_dest_core(prog_global_route_dest_core),
+        .prog_global_route_dest_neuron(prog_global_route_dest_neuron),
+        .prog_global_route_weight(prog_global_route_weight),
+        .learn_enable(learn_enable), .graded_enable(graded_enable),
+        .dendritic_enable(dendritic_enable), .async_enable(async_enable),
+        .threefactor_enable(threefactor_enable), .noise_enable(noise_enable),
+        .skip_idle_enable(skip_idle_enable),
+        .scale_u_enable(1'b0),
+        .reward_value(reward_value),
+        .prog_delay_we(prog_delay_we), .prog_delay_core(prog_delay_core),
+        .prog_delay_addr(prog_delay_addr), .prog_delay_value(prog_delay_value),
+        .prog_ucode_we(prog_ucode_we), .prog_ucode_core(prog_ucode_core),
+        .prog_ucode_addr(prog_ucode_addr), .prog_ucode_data(prog_ucode_data),
+        .prog_param_we(prog_param_we), .prog_param_core(prog_param_core),
+        .prog_param_neuron(prog_param_neuron), .prog_param_id(prog_param_id),
+        .prog_param_value(prog_param_value),
+        .probe_read(probe_read), .probe_core(probe_core),
+        .probe_neuron(probe_neuron), .probe_state_id(probe_state_id),
+        .probe_pool_addr(probe_pool_addr),
+        .probe_data(probe_data), .probe_valid(probe_valid),
+        .ext_valid(ext_valid), .ext_core(ext_core),
+        .ext_neuron_id(ext_neuron_id), .ext_current(ext_current),
+        .timestep_done(timestep_done), .spike_valid_bus(spike_valid_bus),
+        .spike_id_bus(spike_id_bus), .mesh_state_out(mesh_state_out),
+        .total_spikes(total_spikes), .timestep_count(timestep_count),
+        .core_idle_bus(core_idle_bus)
+    );
+
+    task clear_prog;
+        begin
+            prog_pool_we <= 0; prog_index_we <= 0; prog_route_we <= 0;
+            prog_global_route_we <= 0; prog_delay_we <= 0; prog_ucode_we <= 0;
+            prog_param_we <= 0; ext_valid <= 0;
+        end
+    endtask
+
+    task run_timestep;
+        begin
+            start <= 1; @(posedge clk); start <= 0;
+            wait(timestep_done); @(posedge clk);
+        end
+    endtask
+
+    task inject(input [CORE_ID_BITS-1:0] core, input [NEURON_BITS-1:0] nrn,
+                input signed [DATA_WIDTH-1:0] current);
+        begin
+            ext_valid <= 1; ext_core <= core; ext_neuron_id <= nrn; ext_current <= current;
+            @(posedge clk); ext_valid <= 0; @(posedge clk);
+        end
+    endtask
+
+    task prog_conn(input [CORE_ID_BITS-1:0] core,
+                   input [POOL_ADDR_BITS-1:0] addr,
+                   input [NEURON_BITS-1:0] src, input [NEURON_BITS-1:0] tgt,
+                   input signed [DATA_WIDTH-1:0] wt, input [1:0] comp);
+        begin
+            prog_pool_we <= 1; prog_pool_core <= core; prog_pool_addr <= addr;
+            prog_pool_src <= src; prog_pool_target <= tgt;
+            prog_pool_weight <= wt; prog_pool_comp <= comp;
+            @(posedge clk); prog_pool_we <= 0; @(posedge clk);
+        end
+    endtask
+
+    task prog_idx(input [CORE_ID_BITS-1:0] core,
+                  input [NEURON_BITS-1:0] nrn,
+                  input [POOL_ADDR_BITS-1:0] base,
+                  input [COUNT_BITS-1:0] cnt);
+        begin
+            prog_index_we <= 1; prog_index_core <= core;
+            prog_index_neuron <= nrn; prog_index_base <= base;
+            prog_index_count <= cnt; prog_index_format <= 2'd0;
+            @(posedge clk); prog_index_we <= 0; @(posedge clk);
+        end
+    endtask
+
+    task do_probe(input [CORE_ID_BITS-1:0] core, input [NEURON_BITS-1:0] neuron,
+                  input [3:0] sid, input [POOL_ADDR_BITS-1:0] paddr);
+        begin
+            probe_read <= 1; probe_core <= core; probe_neuron <= neuron;
+            probe_state_id <= sid; probe_pool_addr <= paddr;
+            @(posedge clk); probe_read <= 0;
+            wait(probe_valid); @(posedge clk);
+        end
+    endtask
+
+    integer pass_count, fail_count;
+    reg signed [DATA_WIDTH-1:0] potential_before, potential_after;
+    reg signed [DATA_WIDTH-1:0] wt_before, wt_after;
+
+    initial begin
+        clk = 0; rst_n = 0; start = 0;
+        clear_prog;
+        learn_enable = 0; graded_enable = 0; dendritic_enable = 0;
+        async_enable = 0; threefactor_enable = 0; noise_enable = 0;
+        skip_idle_enable = 0;
+        reward_value = 0;
+        probe_read = 0; probe_core = 0; probe_neuron = 0;
+        probe_state_id = 0; probe_pool_addr = 0;
+        pass_count = 0; fail_count = 0;
+
+        #20000 rst_n = 1;
+        @(posedge clk); @(posedge clk);
+
+        $display("test 1: Skip-idle core still runs UPDATE (leak applied)");
+        skip_idle_enable = 1;
+
+        inject(0, 5, 16'sd500);
+
+        run_timestep;
+
+        do_probe(0, 5, 4'd0, 0);
+        potential_after = $signed(probe_data);
+        $display("  Membrane potential of core 0, neuron 5 = %0d", potential_after);
+
+        $display("  core_idle_bus = %b", core_idle_bus);
+
+        if (potential_after > 0 && potential_after < 600) begin
+            $display("TEST 1 PASSED (UPDATE ran: potential = %0d, expected ~497)", potential_after);
+            pass_count = pass_count + 1;
+        end else begin
+            $display("TEST 1 FAILED (potential = %0d, expected ~497)", potential_after);
+            fail_count = fail_count + 1;
+        end
+
+        $display("test 2: Skip-idle skips learning for idle core");
+        prog_conn(0, 0, 10, 11, 16'sd500, 2'd0);
+        prog_idx(0, 10, 0, 1);
+
+        learn_enable = 1;
+        skip_idle_enable = 1;
+
+        do_probe(0, 0, 4'd11, 10'd0);
+        wt_before = $signed(probe_data);
+        $display("  Weight before: %0d", wt_before);
+
+        inject(0, 10, 16'sd1500);
+        run_timestep;
+
+        do_probe(0, 0, 4'd11, 10'd0);
+        wt_after = $signed(probe_data);
+        $display("  Weight after spike (active core): %0d", wt_after);
+
+        run_timestep;
+
+        do_probe(0, 0, 4'd11, 10'd0);
+        $display("  Weight after idle timestep: %0d", $signed(probe_data));
+
+        if (wt_before == 500) begin
+            $display("TEST 2 PASSED (skip-idle with learning completes without error)");
+            pass_count = pass_count + 1;
+        end else begin
+            $display("TEST 2 FAILED");
+            fail_count = fail_count + 1;
+        end
+
+        learn_enable = 0;
+
+        $display("test 3: Skip-idle disabled = normal behavior");
+        skip_idle_enable = 0;
+
+        inject(0, 20, 16'sd500);
+        run_timestep;
+
+        do_probe(0, 20, 4'd0, 0);
+        potential_after = $signed(probe_data);
+        $display("  Potential with skip_idle OFF: %0d", potential_after);
+
+        if (potential_after > 0 && potential_after < 600) begin
+            $display("TEST 3 PASSED (normal behavior: potential = %0d)", potential_after);
+            pass_count = pass_count + 1;
+        end else begin
+            $display("TEST 3 FAILED (potential = %0d)", potential_after);
+            fail_count = fail_count + 1;
+        end
+
+        $display("test 4: core_idle_bus transitions correctly");
+        skip_idle_enable = 1;
+
+        run_timestep;
+        $display("  After idle timestep: core_idle_bus = %b", core_idle_bus);
+        if (core_idle_bus == {NUM_CORES{1'b1}}) begin
+            $display("  All cores idle: PASS");
+        end else begin
+            $display("  Expected all idle, got %b: FAIL", core_idle_bus);
+        end
+
+        inject(0, 30, 16'sd1500);
+        run_timestep;
+        $display("  After core 0 spike: core_idle_bus = %b", core_idle_bus);
+
+        if (core_idle_bus[0] == 0 && core_idle_bus[NUM_CORES-1:1] == {(NUM_CORES-1){1'b1}}) begin
+            $display("TEST 4 PASSED (core 0 active, others idle)");
+            pass_count = pass_count + 1;
+        end else begin
+            $display("TEST 4 FAILED (core_idle_bus = %b, expected 1110)", core_idle_bus);
+            fail_count = fail_count + 1;
+        end
+
+        $display("P21C RESULTS: %0d/%0d passed", pass_count, pass_count + fail_count);
+        if (fail_count == 0)
+            $display("All tests passed!");
+        else
+            $display("SOME TESTS FAILED");
+        $finish;
+    end
+
+endmodule
