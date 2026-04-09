@@ -31,7 +31,6 @@ catalyst-n1/
   tb/            Testbenches
   sdk/           Python SDK with CPU, GPU, and FPGA backends
   fpga/          FPGA build files (Arty A7, AWS F2, Kria K26)
-  sim/           Simulation scripts and visualization
   Makefile       Compile and run simulation
 ```
 
@@ -43,7 +42,7 @@ Requires [Icarus Verilog](https://github.com/steveicarus/iverilog) (v12+).
 # Compile and run basic simulation
 make sim
 
-# Run full regression (25 testbenches)
+# Run full regression (29 testbenches)
 bash run_regression.sh
 
 # Run a single testbench
