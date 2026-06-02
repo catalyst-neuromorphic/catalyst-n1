@@ -131,7 +131,6 @@ Additional benchmarks in `sdk/benchmarks/`: DVS gesture recognition, XOR classif
 ## Links
 
 - [catalyst-neuromorphic.com](https://catalyst-neuromorphic.com) (work in progress)
-- [Cloud API](https://github.com/catalyst-neuromorphic/catalyst-cloud-python) (work in progress)
 - [Catalyst-Neurocore](https://github.com/catalyst-neuromorphic/catalyst-neurocore)
 
 ## License
